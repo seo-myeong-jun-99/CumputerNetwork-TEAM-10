@@ -24,6 +24,7 @@ token_colors = {}
 token_names = {}
 chat_messages = []
 MAX_CHAT = 100
+restart_votes = set()
 
 HTTP_STATUS_TEXT = {
     200: "OK",
@@ -79,6 +80,7 @@ def build_state_locked():
     state = game.get_state()
     state["players"] = players_info_locked()
     state["chat"] = chat_messages[-MAX_CHAT:]
+    state["restart"] = restart_info_locked()
     return state
 
 
@@ -88,6 +90,15 @@ def add_chat_locked(name, msg):
     chat_messages.append({"name": name, "msg": msg})
     if len(chat_messages) > MAX_CHAT * 2:
         del chat_messages[:-MAX_CHAT]
+
+
+def restart_info_locked():
+    black_token = player_slots.get(BLACK)
+    white_token = player_slots.get(WHITE)
+    return {
+        "black": black_token in restart_votes if black_token else False,
+        "white": white_token in restart_votes if white_token else False,
+    }
 
 
 def parse_json_body(body):
@@ -166,6 +177,7 @@ def handle_quit(body):
     with lock:
         color = token_colors.pop(token, None)
         name = token_names.pop(token, None)
+        restart_votes.discard(token)
         if color in (BLACK, WHITE) and player_slots[color] == token:
             player_slots[color] = None
     if name:
@@ -190,6 +202,38 @@ def handle_chat(body):
     return {"ok": True, "chat": chat}
 
 
+def handle_restart(body):
+    token = body.get("token")
+    if not token:
+        raise HttpError(400, "TOKEN_REQUIRED")
+
+    with lock:
+        color = token_colors.get(token)
+        if color not in (BLACK, WHITE):
+            raise HttpError(400, "NOT_A_PLAYER")
+        if game.winner is None:
+            raise HttpError(400, "GAME_NOT_FINISHED")
+
+        restart_votes.add(token)
+        votes = restart_info_locked()
+        both_ready = votes["black"] and votes["white"]
+
+        if both_ready:
+            game.reset()
+            restart_votes.clear()
+            state = build_state_locked()
+            status = "RESTARTED"
+        else:
+            state = build_state_locked()
+            status = "PENDING"
+
+    name = token_names.get(token, "player")
+    print(
+        f"[SERVER] restart requested by {name} ({color_to_name(color)}) status={status}"
+    )
+    return {"ok": True, "state": state, "status": status}
+
+
 def route_request(method, path, body):
     if method == "POST" and path == "/join":
         return handle_join(parse_json_body(body))
@@ -199,9 +243,11 @@ def route_request(method, path, body):
         return handle_quit(parse_json_body(body))
     if method == "POST" and path == "/chat":
         return handle_chat(parse_json_body(body))
+    if method == "POST" and path == "/restart":
+        return handle_restart(parse_json_body(body))
     if method == "GET" and path == "/state":
         return handle_state()
-    if path not in {"/join", "/move", "/quit", "/state", "/chat"}:
+    if path not in {"/join", "/move", "/quit", "/state", "/chat", "/restart"}:
         raise HttpError(404, "NOT_FOUND")
     raise HttpError(405, "METHOD_NOT_ALLOWED")
 

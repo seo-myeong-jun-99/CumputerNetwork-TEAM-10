@@ -1,5 +1,5 @@
 # protocol.py
-# HTTP/1.1 요청/응답 헬퍼 (소켓 레벨에서 직접 구현)
+# Simple HTTP/1.1 request helpers for the Omok server
 
 import json
 import socket
@@ -114,6 +114,9 @@ def quit_game(token):
 def send_chat(token, msg):
     return http_json("POST", "/chat", {"token": token, "msg": msg})
 
+
+def restart_game(token):
+    return http_json("POST", "/restart", {"token": token})
 
 
 def set_server(host=None, port=None):
