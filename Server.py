@@ -1,176 +1,294 @@
+# server.py
+# HTTP/1.1 기반 오목 서버
+
+import json
 import socket
+import threading
+import uuid
+
+from game import OmokGame, BLACK, WHITE
 
 HOST = "0.0.0.0"
-PORT = 5000
-BOARD_SIZE = 15
+PORT = 6000
+MAX_HEADER_BYTES = 16 * 1024
+ENCODING = "utf-8"
 
-EMPTY = "."
-BLACK = "X"   # Player 1
-WHITE = "O"   # Player 2
+# 전역 게임 상태와 동기화를 위한 락
+game = OmokGame()
+lock = threading.Lock()
+player_slots = {
+    BLACK: None,
+    WHITE: None,
+}
+token_colors = {}
+token_names = {}
+chat_messages = []
+MAX_CHAT = 100
+
+HTTP_STATUS_TEXT = {
+    200: "OK",
+    400: "Bad Request",
+    404: "Not Found",
+    405: "Method Not Allowed",
+    500: "Internal Server Error",
+}
 
 
-def create_board():
-    return [[EMPTY for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
+class HttpError(Exception):
+    def __init__(self, status, message, extra=None):
+        self.status = status
+        payload = {"ok": False, "msg": message}
+        if extra:
+            payload.update(extra)
+        self.payload = payload
+        super().__init__(message)
 
 
-def in_bounds(r, c):
-    return 0 <= r < BOARD_SIZE and 0 <= c < BOARD_SIZE
+def color_to_name(color):
+    if color == BLACK:
+        return "BLACK"
+    if color == WHITE:
+        return "WHITE"
+    return "SPECTATOR"
 
 
-def check_five(board, r, c):
-    stone = board[r][c]
-    if stone == EMPTY:
-        return False
+def assign_color_locked():
+    for color in (BLACK, WHITE):
+        if player_slots[color] is None:
+            return color
+    return None
 
-    directions = [
-        (0, 1),   # 가로
-        (1, 0),   # 세로
-        (1, 1),   # 대각 ↘
-        (-1, 1),  # 대각 ↗
+
+def build_state_payload():
+    return {"ok": True, "state": build_state_locked()}
+
+
+def players_ready_locked():
+    return player_slots[BLACK] is not None and player_slots[WHITE] is not None
+
+
+def players_info_locked():
+    return {
+        "black": player_slots[BLACK] is not None,
+        "white": player_slots[WHITE] is not None,
+        "ready": players_ready_locked(),
+    }
+
+
+def build_state_locked():
+    state = game.get_state()
+    state["players"] = players_info_locked()
+    state["chat"] = chat_messages[-MAX_CHAT:]
+    return state
+
+
+def add_chat_locked(name, msg):
+    if not msg:
+        return
+    chat_messages.append({"name": name, "msg": msg})
+    if len(chat_messages) > MAX_CHAT * 2:
+        del chat_messages[:-MAX_CHAT]
+
+
+def parse_json_body(body):
+    if not body:
+        return {}
+    try:
+        return json.loads(body.decode(ENCODING))
+    except json.JSONDecodeError:
+        raise HttpError(400, "INVALID_JSON")
+
+
+def handle_join(body):
+    name = body.get("name") or "player"
+    with lock:
+        color = assign_color_locked()
+        token = uuid.uuid4().hex
+        token_colors[token] = color
+        token_names[token] = name
+        if color in (BLACK, WHITE):
+            player_slots[color] = token
+        state = build_state_locked()
+    print(f"[SERVER] join: name={name} color={color_to_name(color)} token={token[:6]}...")
+    return {
+        "ok": True,
+        "color": color_to_name(color),
+        "token": token,
+        "state": state,
+    }
+
+
+def handle_move(body):
+    token = body.get("token")
+    if not token:
+        raise HttpError(400, "TOKEN_REQUIRED")
+
+    color = token_colors.get(token)
+    if color is None:
+        raise HttpError(400, "INVALID_TOKEN")
+    if color not in (BLACK, WHITE):
+        raise HttpError(400, "NOT_A_PLAYER")
+
+    x = body.get("x")
+    y = body.get("y")
+    if not isinstance(x, int) or not isinstance(y, int):
+        raise HttpError(400, "INVALID_COORD")
+
+    with lock:
+        if not players_ready_locked():
+            state = build_state_locked()
+            raise HttpError(400, "WAITING_FOR_OPPONENT", {"state": state})
+
+        if game.winner is not None:
+            state = build_state_locked()
+            raise HttpError(400, "GAME_ALREADY_OVER", {"state": state})
+
+        if game.current_turn != color:
+            state = build_state_locked()
+            raise HttpError(400, "NOT_YOUR_TURN", {"state": state})
+
+        ok, msg = game.place_stone(x, y)
+        state = build_state_locked()
+
+    return {"ok": ok, "msg": msg, "state": state}
+
+
+def handle_state():
+    with lock:
+        return build_state_payload()
+
+
+def handle_quit(body):
+    token = body.get("token")
+    if not token:
+        raise HttpError(400, "TOKEN_REQUIRED")
+
+    with lock:
+        color = token_colors.pop(token, None)
+        name = token_names.pop(token, None)
+        if color in (BLACK, WHITE) and player_slots[color] == token:
+            player_slots[color] = None
+    if name:
+        print(f"[SERVER] quit: name={name} color={color_to_name(color)} token={token[:6]}...")
+    return {"ok": True, "msg": "BYE"}
+
+
+def handle_chat(body):
+    token = body.get("token")
+    if not token:
+        raise HttpError(400, "TOKEN_REQUIRED")
+    msg = body.get("msg")
+    if not isinstance(msg, str):
+        raise HttpError(400, "INVALID_MESSAGE")
+    if token not in token_names:
+        raise HttpError(400, "INVALID_TOKEN")
+
+    with lock:
+        name = token_names.get(token, "player")
+        add_chat_locked(name, msg[:200])
+        chat = chat_messages[-MAX_CHAT:]
+    return {"ok": True, "chat": chat}
+
+
+def route_request(method, path, body):
+    if method == "POST" and path == "/join":
+        return handle_join(parse_json_body(body))
+    if method == "POST" and path == "/move":
+        return handle_move(parse_json_body(body))
+    if method == "POST" and path == "/quit":
+        return handle_quit(parse_json_body(body))
+    if method == "POST" and path == "/chat":
+        return handle_chat(parse_json_body(body))
+    if method == "GET" and path == "/state":
+        return handle_state()
+    if path not in {"/join", "/move", "/quit", "/state", "/chat"}:
+        raise HttpError(404, "NOT_FOUND")
+    raise HttpError(405, "METHOD_NOT_ALLOWED")
+
+
+def read_http_request(conn):
+    data = b""
+    while b"\r\n\r\n" not in data:
+        chunk = conn.recv(4096)
+        if not chunk:
+            break
+        data += chunk
+        if len(data) > MAX_HEADER_BYTES:
+            raise HttpError(400, "HEADER_TOO_LARGE")
+    if b"\r\n\r\n" not in data:
+        raise HttpError(400, "INVALID_HTTP_REQUEST")
+
+    header_bytes, body = data.split(b"\r\n\r\n", 1)
+    header_text = header_bytes.decode("iso-8859-1")
+    lines = header_text.split("\r\n")
+    if not lines or len(lines[0].split()) < 3:
+        raise HttpError(400, "INVALID_REQUEST_LINE")
+
+    request_line = lines[0]
+    method, path, _ = request_line.split(maxsplit=2)
+
+    headers = {}
+    for line in lines[1:]:
+        if not line:
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        headers[key.strip().lower()] = value.strip()
+
+    content_length = int(headers.get("content-length", "0") or "0")
+    while len(body) < content_length:
+        chunk = conn.recv(4096)
+        if not chunk:
+            break
+        body += chunk
+    if len(body) < content_length:
+        raise HttpError(400, "INCOMPLETE_BODY")
+
+    return method.upper(), path, body[:content_length]
+
+
+def send_http_response(conn, status, payload):
+    body = json.dumps(payload).encode(ENCODING)
+    status_text = HTTP_STATUS_TEXT.get(status, "")
+    headers = [
+        f"HTTP/1.1 {status} {status_text}",
+        "Content-Type: application/json",
+        f"Content-Length: {len(body)}",
+        "Connection: close",
+        "",
+        "",
     ]
-
-    for dr, dc in directions:
-        count = 1
-
-        # 한쪽 방향
-        nr, nc = r + dr, c + dc
-        while in_bounds(nr, nc) and board[nr][nc] == stone:
-            count += 1
-            nr += dr
-            nc += dc
-
-        # 반대 방향
-        nr, nc = r - dr, c - dc
-        while in_bounds(nr, nc) and board[nr][nc] == stone:
-            count += 1
-            nr -= dr
-            nc -= dc
-
-        if count >= 5:
-            return True
-
-    return False
+    conn.sendall("\r\n".join(headers).encode(ENCODING) + body)
 
 
-def board_to_string(board):
-    # 열 번호
-    header = "   " + " ".join(f"{i:2d}" for i in range(1, BOARD_SIZE + 1))
-    lines = [header]
-    for i, row in enumerate(board, start=1):
-        lines.append(f"{i:2d} " + " ".join(row))
-    return "\n".join(lines)
+def handle_client(conn, addr):
+    try:
+        method, path, body = read_http_request(conn)
+        response = route_request(method, path, body)
+        send_http_response(conn, 200, response)
+    except HttpError as err:
+        send_http_response(conn, err.status, err.payload)
+    except Exception as exc:
+        print(f"[SERVER] internal error for {addr}: {exc}")
+        send_http_response(conn, 500, {"ok": False, "msg": "SERVER_ERROR"})
+    finally:
+        conn.close()
 
 
-def send_line(sock, msg):
-    sock.sendall((msg + "\n").encode("utf-8"))
-
-
-def broadcast(players, msg):
-    for p in players:
-        send_line(p["sock"], msg)
-
-
-def game_server():
-    board = create_board()
-
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as srv: #socket.AF_INET(IPv4 사용), socket.SOCK_STREAM(TCP소켓 사용) 
-        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind((HOST, PORT)) # ip와 포트번호로 바인딩
-        srv.listen(2) #플레이어 최대 2명
-        print(f"서버 대기 중... ({HOST}:{PORT})")
-
-        
-        players = []
-
-        for num in (1, 2):
-            conn, addr = srv.accept() #서버가 클라이언트 요청을 수락
-            print(f"플레이어 {num} 접속: {addr}")
-            f = conn.makefile("r", encoding="utf-8")
-            stone = BLACK if num == 1 else WHITE
-            player = {"sock": conn, "file": f, "stone": stone}
-            players.append(player)
-            send_line(conn, f"INFO 서버에 연결되었습니다. 당신의 돌: {stone}")
-            send_line(conn, "INFO 다른 플레이어를 기다리는 중입니다...")
-
-        broadcast(players, "INFO 두 플레이어가 모두 접속했습니다. 게임을 시작합니다!")
-
-        turn = 0  # 0 → players[0] / 1 → players[1]
+def main():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind((HOST, PORT))
+        s.listen()
+        print(f"[SERVER] HTTP listening on {HOST}:{PORT}")
 
         while True:
-            current = players[turn]
-            other = players[1 - turn]
-
-            # 현재 보드 상태 브로드캐스트
-            board_str = board_to_string(board)
-            broadcast(players, "")
-            broadcast(players, "BOARD")
-            for line in board_str.split("\n"):
-                broadcast(players, line)
-            broadcast(players, f"INFO 현재 차례: {current['stone']}")
-
-            # 현재 플레이어에게 입력 요구
-            send_line(current["sock"], "MOVE 당신의 수를 입력하세요 (row col, 1~15):")
-
-            # 좌표 읽기
-            while True:
-                line = current["file"].readline()
-                if not line:
-                    # 연결 끊김
-                    broadcast(players, "INFO 상대가 접속을 종료했습니다. 게임을 끝냅니다.")
-                    return
-                line = line.strip()
-                if not line:
-                    continue
-
-                try:
-                    r_str, c_str = line.split()
-                    r = int(r_str) - 1
-                    c = int(c_str) - 1
-                except ValueError:
-                    send_line(current["sock"], "MOVE 형식이 잘못되었습니다. 예: 8 8")
-                    continue
-
-                if not in_bounds(r, c):
-                    send_line(current["sock"], "MOVE 보드 범위를 벗어났습니다. 1~15 사이로 다시 입력:")
-                    continue
-
-                if board[r][c] != EMPTY:
-                    send_line(current["sock"], "MOVE 이미 돌이 놓인 자리입니다. 다시 입력:")
-                    continue
-
-                # 유효한 수
-                board[r][c] = current["stone"]
-                break
-
-            # 승리/무승부 체크
-            if check_five(board, r, c):
-                board_str = board_to_string(board)
-                broadcast(players, "")
-                broadcast(players, "BOARD")
-                for line in board_str.split("\n"):
-                    broadcast(players, line)
-
-                broadcast(players, f"RESULT 플레이어 {current['stone']} 승리!")
-                break
-
-            # 무승부 (보드 가득 참)
-            if all(board[i][j] != EMPTY for i in range(BOARD_SIZE) for j in range(BOARD_SIZE)):
-                board_str = board_to_string(board)
-                broadcast(players, "")
-                broadcast(players, "BOARD")
-                for line in board_str.split("\n"):
-                    broadcast(players, line)
-                broadcast(players, "RESULT 보드가 가득 찼습니다. 무승부!")
-                break
-
-            # 턴 넘기기
-            turn = 1 - turn
-
-        # 게임 종료
-        broadcast(players, "INFO 게임이 종료되었습니다. 서버를 종료합니다.")
-        for p in players:
-            p["sock"].close()
+            conn, addr = s.accept()
+            conn.settimeout(10)
+            t = threading.Thread(target=handle_client, args=(conn, addr), daemon=True)
+            t.start()
 
 
 if __name__ == "__main__":
-    game_server()
+    main()
