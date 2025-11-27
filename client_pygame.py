@@ -1,6 +1,6 @@
 # client_pygame.py
 # HTTP 기반 pygame 오목 클라이언트
-
+#여기는 ui 코드
 import socket
 import sys
 import pygame
@@ -16,6 +16,8 @@ from protocol import (
     restart_game,
 )
 
+
+# 화면 그리기
 CELL_SIZE = 40
 MARGIN = 40
 CHAT_WIDTH = 260
@@ -45,14 +47,14 @@ CHAT_TEXT = (35, 30, 25)
 CHAT_INPUT_BG = (255, 255, 255)
 CHAT_INPUT_BORDER = (140, 130, 120)
 
-
+# 마우스로 좌표 클릭 -> 오목 좌표
 def coord_from_mouse(pos):
     mx, my = pos
     x = round((mx - MARGIN) / CELL_SIZE)
     y = round((my - (TOP_OFFSET + MARGIN)) / CELL_SIZE)
     return x, y
 
-
+# 오목판 그리는 함수
 def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts):
     board = state["board"]
     players = state.get("players", {})
@@ -69,7 +71,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
 
     board_origin_y = TOP_OFFSET + MARGIN
 
-    # board lines
+    # 선
     for i in range(BOARD_SIZE):
         pygame.draw.line(
             screen,
@@ -86,7 +88,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
             1,
         )
 
-    # stones
+    # 돌
     for y in range(BOARD_SIZE):
         for x in range(BOARD_SIZE):
             stone = board[y][x]
@@ -134,7 +136,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
     surface2 = fonts["label"].render(txt2, True, TEXT_MAIN)
     screen.blit(surface2, (header_rect.x + 10, header_rect.bottom + 6))
 
-    # Centered game result banner on the board for better visibility
+    # 승리하는거 중간에 띄위기
     if winner is not None:
         overlay = pygame.Surface((BOARD_AREA, BOARD_AREA), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 140))
@@ -146,7 +148,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
         )
         screen.blit(title_surface, title_rect)
 
-        # restart consent status
+        # 재시작
         my_key = my_color_name.lower()
         other_key = "white" if my_key == "black" else "black"
         my_req = restart_info.get(my_key, False)
@@ -170,7 +172,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
 
     return chat_messages, waiting, restart_rect
 
-
+#채팅
 def draw_chat(screen, chat_messages, input_text, fonts):
     title_rect = pygame.Rect(BOARD_AREA + 10, 8, CHAT_WIDTH - 20, 26)
     pygame.draw.rect(screen, CHAT_TITLE_BG, title_rect, border_radius=6)
@@ -201,7 +203,7 @@ def draw_chat(screen, chat_messages, input_text, fonts):
         placeholder = font.render("No messages yet. Say hi!", True, TEXT_DIM)
         screen.blit(placeholder, (area_x + 4, area_y + 4))
 
-    # input box
+    # 입력창
     input_rect = pygame.Rect(area_x - 2, HEIGHT - MARGIN - 40, area_w + 4, 32)
     pygame.draw.rect(screen, CHAT_INPUT_BG, input_rect)
     pygame.draw.rect(screen, CHAT_INPUT_BORDER, input_rect, 1)
@@ -211,7 +213,7 @@ def draw_chat(screen, chat_messages, input_text, fonts):
     hint = fonts["tiny"].render("Enter to send • Esc to quit", True, TEXT_DIM)
     screen.blit(hint, (input_rect.x, input_rect.bottom + 4))
 
-
+#로컬로 돌릴때 편의를 위함. 자동으로 ip 찾기
 def detect_local_ip():
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

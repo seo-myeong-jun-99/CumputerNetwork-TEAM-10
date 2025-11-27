@@ -1,10 +1,10 @@
 # protocol.py
 # Simple HTTP/1.1 request helpers for the Omok server
-
+# client_pygame 과 Server가 통신할 수 있게 하는 역할
 import json
 import socket
 
-SERVER_HOST = "172.16.100.87"
+SERVER_HOST = "172.16.100.87" #기본값
 SERVER_PORT = 6000
 TIMEOUT = 5
 USER_AGENT = "OmokHTTPClient/1.0"
@@ -12,15 +12,15 @@ USER_AGENT = "OmokHTTPClient/1.0"
 
 def _read_until(sock, marker):
     data = b""
-    while marker not in data:
+    while marker not in data: #marker(예를들어 \r\n\r\n)가 나올 때 까지 데이터 읽기
         chunk = sock.recv(4096)
         if not chunk:
             break
         data += chunk
     return data
 
-
-def _read_http_response(sock):
+# 응답을 해석한다
+def _read_http_response(sock): #이부분은 server부분과 동일하게 작동
     data = _read_until(sock, b"\r\n\r\n")
     if b"\r\n\r\n" not in data:
         raise RuntimeError("INVALID_HTTP_RESPONSE")
@@ -95,6 +95,7 @@ def http_json(method, path, payload=None):
     return data
 
 
+#여기 밑에 함수들 "명령 버튼 함수들", 게임에서 하는 행동을 서버에 전달하는 인터페이스
 def join_server(name="pygame-client"):
     return http_json("POST", "/join", {"name": name})
 
