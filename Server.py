@@ -8,8 +8,8 @@ import uuid
 
 from game import OmokGame, BLACK, WHITE
 
-HOST = "0.0.0.0"
-PORT = 6000
+HOST = "0.0.0.0" #외부 에서 접속 가능
+PORT = 6000 #포트 번호
 MAX_HEADER_BYTES = 16 * 1024
 ENCODING = "utf-8"
 
@@ -53,7 +53,7 @@ def color_to_name(color):
     return "SPECTATOR"
 
 
-def assign_color_locked():
+def assign_color_locked(): # 현재 비어 있는 색상 확인
     for color in (BLACK, WHITE):
         if player_slots[color] is None:
             return color
@@ -64,7 +64,7 @@ def build_state_payload():
     return {"ok": True, "state": build_state_locked()}
 
 
-def players_ready_locked():
+def players_ready_locked(): # 플레이어 2명이면 시작
     return player_slots[BLACK] is not None and player_slots[WHITE] is not None
 
 
@@ -88,7 +88,7 @@ def add_chat_locked(name, msg):
     if not msg:
         return
     chat_messages.append({"name": name, "msg": msg})
-    if len(chat_messages) > MAX_CHAT * 2:
+    if len(chat_messages) > MAX_CHAT * 2: # 최대 길이보다 크면 삭제
         del chat_messages[:-MAX_CHAT]
 
 
@@ -111,8 +111,8 @@ def parse_json_body(body):
 
 
 def handle_join(body):
-    name = body.get("name") or "player"
-    with lock:
+    name = body.get("name") or "player" # 이름이 없으면 player 햘당
+    with lock: 
         color = assign_color_locked()
         token = uuid.uuid4().hex
         token_colors[token] = color
@@ -121,7 +121,7 @@ def handle_join(body):
             player_slots[color] = token
         state = build_state_locked()
     print(f"[SERVER] join: name={name} color={color_to_name(color)} token={token[:6]}...")
-    return {
+    return { # 클라이언트에 응답 
         "ok": True,
         "color": color_to_name(color),
         "token": token,
@@ -175,7 +175,7 @@ def handle_quit(body):
         raise HttpError(400, "TOKEN_REQUIRED")
 
     with lock:
-        color = token_colors.pop(token, None)
+        color = token_colors.pop(token, None) # del해버리면 이후 player_slot이나 상태를 출력할수 없으므로 pop해서 저장
         name = token_names.pop(token, None)
         restart_votes.discard(token)
         if color in (BLACK, WHITE) and player_slots[color] == token:
@@ -234,7 +234,7 @@ def handle_restart(body):
     return {"ok": True, "state": state, "status": status}
 
 
-def route_request(method, path, body):
+def route_request(method, path, body): # 요청에 따라 적정한 함수로 연결
     if method == "POST" and path == "/join":
         return handle_join(parse_json_body(body))
     if method == "POST" and path == "/move":
@@ -252,9 +252,9 @@ def route_request(method, path, body):
     raise HttpError(405, "METHOD_NOT_ALLOWED")
 
 
-def read_http_request(conn):
+def read_http_request(conn): # 클라이언트 소켓(conn)에서 HTTP 요청을 읽는 함수
     data = b""
-    while b"\r\n\r\n" not in data:
+    while b"\r\n\r\n" not in data: # 해더 까지만 읽음
         chunk = conn.recv(4096)
         if not chunk:
             break
@@ -267,13 +267,15 @@ def read_http_request(conn):
     header_bytes, body = data.split(b"\r\n\r\n", 1)
     header_text = header_bytes.decode("iso-8859-1")
     lines = header_text.split("\r\n")
+    
     if not lines or len(lines[0].split()) < 3:
         raise HttpError(400, "INVALID_REQUEST_LINE")
 
     request_line = lines[0]
-    method, path, _ = request_line.split(maxsplit=2)
+    method, path, _ = request_line.split(maxsplit=2) # method ex)post , path ex)join
 
     headers = {}
+    
     for line in lines[1:]:
         if not line:
             continue
@@ -282,8 +284,8 @@ def read_http_request(conn):
         key, value = line.split(":", 1)
         headers[key.strip().lower()] = value.strip()
 
-    content_length = int(headers.get("content-length", "0") or "0")
-    while len(body) < content_length:
+    content_length = int(headers.get("content-length", "0") or "0") 
+    while len(body) < content_length: # 바디 읽는 부분
         chunk = conn.recv(4096)
         if not chunk:
             break
@@ -296,7 +298,7 @@ def read_http_request(conn):
 
 def send_http_response(conn, status, payload):
     body = json.dumps(payload).encode(ENCODING)
-    status_text = HTTP_STATUS_TEXT.get(status, "")
+    status_text = HTTP_STATUS_TEXT.get(status, "") # 미리 저장해논 상태를 불러온다
     headers = [
         f"HTTP/1.1 {status} {status_text}",
         "Content-Type: application/json",
@@ -311,7 +313,7 @@ def send_http_response(conn, status, payload):
 def handle_client(conn, addr):
     try:
         method, path, body = read_http_request(conn)
-        response = route_request(method, path, body)
+        response = route_request(method, path, body) # 실제 게임 정보
         send_http_response(conn, 200, response)
     except HttpError as err:
         send_http_response(conn, err.status, err.payload)
@@ -323,7 +325,7 @@ def handle_client(conn, addr):
 
 
 def main():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s: # AF_INET(IPv4),SOCK_STREAM(TCP) 
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((HOST, PORT))
         s.listen()

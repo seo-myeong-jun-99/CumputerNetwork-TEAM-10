@@ -46,14 +46,14 @@ CHAT_INPUT_BG = (255, 255, 255)
 CHAT_INPUT_BORDER = (140, 130, 120)
 
 
-def coord_from_mouse(pos):
+def coord_from_mouse(pos): # 마우스로 누른 좌표 받아오기
     mx, my = pos
     x = round((mx - MARGIN) / CELL_SIZE)
     y = round((my - (TOP_OFFSET + MARGIN)) / CELL_SIZE)
     return x, y
 
 
-def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts):
+def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts): 
     board = state["board"]
     players = state.get("players", {})
     waiting = not players.get("ready", True)

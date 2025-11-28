@@ -16,10 +16,7 @@ class OmokGame:
         return 0 <= x < BOARD_SIZE and 0 <= y < BOARD_SIZE
 
     def place_stone(self, x, y):
-        """
-        Place a stone at (x, y).
-        Returns: (ok: bool, msg: str)
-        """
+        
         if not self.in_bounds(x, y):
             return False, "OUT_OF_BOUNDS"
 
@@ -77,9 +74,6 @@ class OmokGame:
         return False
 
     def get_state(self):
-        """
-        Return a dictionary-friendly representation for clients.
-        """
         return {
             "board": self.board,
             "turn": self.current_turn,
@@ -88,7 +82,6 @@ class OmokGame:
         }
 
     def reset(self):
-        """Restart the match with a clean board and counters."""
         self.board = [[EMPTY for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
         self.current_turn = BLACK
         self.winner = None
