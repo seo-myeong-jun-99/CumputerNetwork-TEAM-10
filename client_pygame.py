@@ -55,7 +55,7 @@ def coord_from_mouse(pos):
     return x, y
 
 
-def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts):
+def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts): #오목판 그리기
     board = state["board"]
     players = state.get("players", {})
     waiting = not players.get("ready", True)
