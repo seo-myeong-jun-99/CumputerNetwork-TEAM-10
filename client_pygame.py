@@ -121,7 +121,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
 
     paint_restart()
 
-    if winner == BLACK:
+    if winner == BLACK: 
         txt2 = "Black wins!"
     elif winner == WHITE:
         txt2 = "White wins!"
@@ -136,7 +136,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
     surface2 = fonts["label"].render(txt2, True, TEXT_MAIN)
     screen.blit(surface2, (header_rect.x + 10, header_rect.bottom + 6))
 
-    # 승리하는거 중간에 띄위기
+    # 승리 시 가운데에 나타내기
     if winner is not None:
         overlay = pygame.Surface((BOARD_AREA, BOARD_AREA), pygame.SRCALPHA)
         overlay.fill((0, 0, 0, 140))
@@ -172,7 +172,7 @@ def draw_board(screen, state: dict, my_color_name: str, can_restart: bool, fonts
 
     return chat_messages, waiting, restart_rect
 
-#채팅
+#채팅 UI 그리기
 def draw_chat(screen, chat_messages, input_text, fonts):
     title_rect = pygame.Rect(BOARD_AREA + 10, 8, CHAT_WIDTH - 20, 26)
     pygame.draw.rect(screen, CHAT_TITLE_BG, title_rect, border_radius=6)
@@ -191,7 +191,7 @@ def draw_chat(screen, chat_messages, input_text, fonts):
     font = fonts["small"]
     # draw messages (latest at bottom)
     line_y = area_y + area_h - 22
-    for msg in reversed(chat_messages[-20:]):
+    for msg in reversed(chat_messages[-20:]): #최근 20개를 역순으로 출력해서 스크롤 느낌을 만듦
         text = f"{msg.get('name', '???')}: {msg.get('msg', '')}"
         surface = font.render(text, True, CHAT_TEXT)
         screen.blit(surface, (area_x + 4, line_y))
@@ -200,7 +200,7 @@ def draw_chat(screen, chat_messages, input_text, fonts):
             break
 
     if not chat_messages:
-        placeholder = font.render("No messages yet. Say hi!", True, TEXT_DIM)
+        placeholder = font.render("No messages yet. Say hi!", True, TEXT_DIM) # 채팅이 하나도 없을 경우 이 문구를 표시함
         screen.blit(placeholder, (area_x + 4, area_y + 4))
 
     # 입력창
@@ -214,16 +214,16 @@ def draw_chat(screen, chat_messages, input_text, fonts):
     screen.blit(hint, (input_rect.x, input_rect.bottom + 4))
 
 #로컬로 돌릴때 편의를 위함. 자동으로 ip 찾기
-def detect_local_ip():
+def detect_local_ip(): #사용자가 서버 주소를 안 치고 그냥 엔터 치면, 이 컴퓨터의 로컬 IP를 자동으로 찾아주는 역할
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM) #소켓을 만듦
+        s.connect(("8.8.8.8", 80)) # 구글 DNS인 (8,8,8,8)로 연결을 시도해보면 OS가 어떤 IP로 나갈 지 결정
+        ip = s.getsockname()[0] # 그 IP를 getsockname()에서 알 수 있음
     except Exception:
-        ip = "127.0.0.1"
+        ip = "127.0.0.1" # 이 방법이 실패하면 그냥 (127.0.0.1)을 쓰도록 함
     finally:
         s.close()
-    return ip
+    return ip #최종 IP문자열 반환
 
 
 def main():
@@ -247,11 +247,11 @@ def main():
         print("Failed to join server:", join_resp)
         return
 
-    pygame.init()
-    screen = pygame.display.set_mode((WIDTH, HEIGHT))
+    pygame.init() #pygame 시작
+    screen = pygame.display.set_mode((WIDTH, HEIGHT)) #화면 열기
     pygame.display.set_caption("Omok Client (pygame)")
 
-    fonts = {
+    fonts = { #폰트 설정
         "label": pygame.font.SysFont("bahnschrift", 20),
         "small": pygame.font.SysFont("bahnschrift", 16),
         "tiny": pygame.font.SysFont("bahnschrift", 12),
@@ -266,34 +266,34 @@ def main():
     restart_rect = None
 
     if color_name == "BLACK":
-        my_color = BLACK
+        my_color = BLACK #흑돌
     elif color_name == "WHITE":
-        my_color = WHITE
+        my_color = WHITE #백돌
     else:
-        my_color = None
+        my_color = None #관전자
 
-    clock = pygame.time.Clock()
-    running = True
+    clock = pygame.time.Clock() #FPS 조절용
+    running = True #메인루프 가동 여부
 
     while running:
-        clock.tick(30)
+        clock.tick(30) # FPS를 30으로 제한
 
-        can_restart = (
+        can_restart = ( #게임이 끝나고 내가 플레이어일 경우 True
             state is not None and state.get("winner") is not None and my_color in (BLACK, WHITE)
         )
 
         for event in pygame.event.get():
-            if event.type == pygame.QUIT:
+            if event.type == pygame.QUIT: # 창 닫힐 경우
                 running = False
 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-                elif event.key == pygame.K_BACKSPACE:
+                elif event.key == pygame.K_BACKSPACE: 
                     chat_input = chat_input[:-1]
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                     text = chat_input.strip()
-                    if text:
+                    if text: # 채팅 전송
                         resp = send_chat(token, text)
                         if not resp.get("ok"):
                             print("Chat send failed:", resp)
@@ -308,12 +308,12 @@ def main():
                     else:
                         print("Restart is available after a finished game.")
                 else:
-                    if len(chat_input) < 200:
+                    if len(chat_input) < 200: # 채팅 최대 200자 제한
                         chat_input += event.unicode
 
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if restart_rect and restart_rect.collidepoint(event.pos):
-                    if can_restart:
+                    if can_restart: # 게임 다시시작
                         resp = restart_game(token)
                         if resp.get("state"):
                             state = resp["state"]
@@ -323,10 +323,10 @@ def main():
                     continue
                 if state["winner"] is not None:
                     continue
-                if my_color is None:
+                if my_color is None: #관전자일 경우
                     print("You are not an active player.")
                     continue
-                if state["turn"] != my_color:
+                if state["turn"] != my_color: #내 차례가 아닐경우
                     print("Not your turn.")
                     continue
 
@@ -338,9 +338,9 @@ def main():
                     if resp.get("state"):
                         state = resp["state"]
 
-        resp = request_state()
+        resp = request_state() #서버에 현재 상태 요청
         if resp.get("ok") and resp.get("state"):
-            state = resp["state"]
+            state = resp["state"] #state가 있으면 로컬 state를 그 값으로 바꿈 
 
         chat_messages = []
         if state is not None:
@@ -351,8 +351,8 @@ def main():
             screen.fill(BACKGROUND)
             restart_rect = None
 
-        draw_chat(screen, chat_messages, chat_input, fonts)
-        pygame.display.flip()
+        draw_chat(screen, chat_messages, chat_input, fonts) #채팅 영역 그리기
+        pygame.display.flip() #실제 화면에 렌더링 결과 반영
 
     quit_game(token)
     pygame.quit()
