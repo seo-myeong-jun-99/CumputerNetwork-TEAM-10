@@ -24,10 +24,10 @@
 
 ## 역할분담
 
--   **서명준:**server
--   **김우진:**UI/protocol
--   **권진욱:**client
--   **Sayed Refat:**Omock Rule
+-   **서명준:** server
+-   **김우진:** UI/protocol
+-   **권진욱:** client
+-   **Sayed Refat:** Omock Rule
 
 ---
 
