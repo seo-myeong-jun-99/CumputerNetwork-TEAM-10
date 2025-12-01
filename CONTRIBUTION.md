@@ -6,11 +6,6 @@ game.py - I made all the game rules and logic:
 - Handles turn switching between BLACK and WHITE
 - Manages game states (playing, win, draw)
 
-What it does:
-- Takes moves from players
-- Checks if they're valid
-- Decides if someone won or if it's a draw
-- Tells server what happened
 ### Woojin Kim
 - Implemented the entire `protocol.py`
   - Built HTTP request/response construction and parsing logic
