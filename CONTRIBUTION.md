@@ -1,3 +1,16 @@
+### REFAT MD SAYED ISLAM
+game.py - I made all the game rules and logic:
+- Created the 15×15 Omok board
+- Made the move checking system (can't place outside board or on taken spots)
+- Built the win checker - looks for 5 stones in a row in any direction
+- Handles turn switching between BLACK and WHITE
+- Manages game states (playing, win, draw)
+
+What it does:
+- Takes moves from players
+- Checks if they're valid
+- Decides if someone won or if it's a draw
+- Tells server what happened
 ### Woojin Kim
 - Implemented the entire `protocol.py`
   - Built HTTP request/response construction and parsing logic
