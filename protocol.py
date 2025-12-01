@@ -4,7 +4,7 @@
 import json
 import socket
 
-SERVER_HOST = "172.16.100.87" #기본값
+SERVER_HOST = "172.16.100.87" #기본값, 학교
 SERVER_PORT = 6000
 TIMEOUT = 5
 USER_AGENT = "OmokHTTPClient/1.0"
@@ -26,7 +26,7 @@ def _read_http_response(sock): #이부분은 server부분과 동일하게 작동
         raise RuntimeError("INVALID_HTTP_RESPONSE")
     header_part, body = data.split(b"\r\n\r\n", 1)
     header_lines = header_part.decode("iso-8859-1").split("\r\n")
-    status_line = header_lines[0]
+    status_line = header_lines[0] #프로토콜 버전 + 상태 코드 + 상태 메시지로 이루어져 있다
     parts = status_line.split(" ", 2)
     if len(parts) < 2:
         raise RuntimeError("INVALID_STATUS_LINE")
@@ -49,10 +49,15 @@ def _read_http_response(sock): #이부분은 server부분과 동일하게 작동
             break
         body += chunk
     return status_code, headers, body[:content_length]
-
+#200,
+# {
+#   'content-type': 'application/json',
+#   'content-length': '27'
+# },
+# b'{"ok": true, "msg": "hi"}'
 
 def _http_request(method, path, body_bytes):
-    lines = [
+    lines = [ #http 메시지 만들기
         f"{method} {path} HTTP/1.1",
         f"Host: {SERVER_HOST}:{SERVER_PORT}",
         f"User-Agent: {USER_AGENT}",
@@ -62,12 +67,12 @@ def _http_request(method, path, body_bytes):
     ]
     if body_bytes:
         lines.insert(4, "Content-Type: application/json")
-    request_data = "\r\n".join(lines + ["", ""]).encode("utf-8") + body_bytes
+    request_data = "\r\n".join(lines + ["", ""]).encode("utf-8") + body_bytes #최종적으로 이거를 보낼거임
 
-    sock = socket.create_connection((SERVER_HOST, SERVER_PORT), timeout=TIMEOUT)
+    sock = socket.create_connection((SERVER_HOST, SERVER_PORT), timeout=TIMEOUT) #TCP 연결
     try:
-        sock.sendall(request_data)
-        return _read_http_response(sock)
+        sock.sendall(request_data) #http요청보내기
+        return _read_http_response(sock) #응답받기
     finally:
         sock.close()
 
@@ -89,38 +94,39 @@ def http_json(method, path, payload=None):
     else:
         data = {}
 
-    if status >= 400 and data.get("ok", True):
+    if status >= 400 and data.get("ok", True): #400번대이상이면 ok여도 false로 바꿔주, http 상태코드를 따르기 (json보다 http를 신뢰)
         data["ok"] = False
     data["status"] = status
     return data
 
 
 #여기 밑에 함수들 "명령 버튼 함수들", 게임에서 하는 행동을 서버에 전달하는 인터페이스
-def join_server(name="pygame-client"):
+
+def join_server(name="pygame-client"):#게임방에 입장하기
     return http_json("POST", "/join", {"name": name})
 
 
-def request_state():
+def request_state(): #전체 상태 요청
     return http_json("GET", "/state")
 
 
-def submit_move(token, x, y):
+def submit_move(token, x, y):#돌 놓기
     return http_json("POST", "/move", {"token": token, "x": x, "y": y})
 
 
-def quit_game(token):
+def quit_game(token):#게임 종료
     return http_json("POST", "/quit", {"token": token})
 
 
-def send_chat(token, msg):
+def send_chat(token, msg):#채팅메시지 보내기
     return http_json("POST", "/chat", {"token": token, "msg": msg})
 
 
-def restart_game(token):
+def restart_game(token):#게임 재시작
     return http_json("POST", "/restart", {"token": token})
 
 
-def set_server(host=None, port=None):
+def set_server(host=None, port=None):#서버 주소/포트 변경하는 설정 함수
     global SERVER_HOST, SERVER_PORT
     if host:
         SERVER_HOST = host
