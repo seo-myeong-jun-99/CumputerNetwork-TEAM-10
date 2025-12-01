@@ -1,8 +1,10 @@
 # client.py
 # HTTP 기반 pygame 오목 클라이언트
 #여기는 ui 코드
+import argparse
 import socket
 import sys
+
 import pygame
 
 from game import BOARD_SIZE, EMPTY, BLACK, WHITE
@@ -226,21 +228,34 @@ def detect_local_ip(): #사용자가 서버 주소를 안 치고 그냥 엔터 �
     return ip #최종 IP문자열 반환
 
 
-def main():
-    host_input = ""
-    if sys.stdin.isatty():
-        host_input = input("서버 주소 입력 (빈칸 시 자동 감지): ").strip()
-    if host_input:
-        host = host_input
-    else:
-        host = detect_local_ip()
-        print(f"로컬 호스트를 {host}로 사용합니다.")
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Pygame Omok client")
+    parser.add_argument("--host", help="Server host/IP to connect to")
+    parser.add_argument("--name", help="Player name to register with the server")
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    host = args.host
+    if not host:
+        host_input = ""
+        if sys.stdin.isatty():
+            host_input = input("서버 주소 입력 (빈칸 시 자동 감지): ").strip()
+        if host_input:
+            host = host_input
+        else:
+            host = detect_local_ip()
+            print(f"로컬 호스트를 {host}로 사용합니다.")
     set_server(host)
 
-    name_input = ""
-    if sys.stdin.isatty():
-        name_input = input(f"플레이어 이름 입력 ({PLAYER_NAME} 기본): ").strip()
-    player_name = name_input if name_input else PLAYER_NAME
+    player_name = args.name
+    if not player_name:
+        name_input = ""
+        if sys.stdin.isatty():
+            name_input = input(f"플레이어 이름 입력 ({PLAYER_NAME} 기본): ").strip()
+        player_name = name_input if name_input else PLAYER_NAME
 
     join_resp = join_server(player_name)
     if not join_resp.get("ok"):
