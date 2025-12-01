@@ -1,6 +1,6 @@
 # protocol.py
 # Simple HTTP/1.1 request helpers for the Omok server
-# client_pygame 과 Server가 통신할 수 있게 하는 역할
+# client 과 Server가 통신할 수 있게 하는 역할
 import json
 import socket
 

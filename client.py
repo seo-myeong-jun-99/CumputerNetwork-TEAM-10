@@ -1,4 +1,4 @@
-# client_pygame.py
+# client.py
 # HTTP 기반 pygame 오목 클라이언트
 #여기는 ui 코드
 import socket
